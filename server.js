@@ -15,24 +15,72 @@ app.get("/", (req, res) => {
   <title>WS Audio</title>
 </head>
 <body>
-  <button onclick="sendPlay()">Play</button>
-  <audio id="player"></audio>
+  <button onclick="startBackground()">Start Background</button>
+  <button onclick="emitLoud()">Emit Loud</button>
+
+  <audio id="bg" loop crossorigin="anonymous"></audio>
+  <audio id="loud" crossorigin="anonymous"></audio>
 
   <script>
     const ws = new WebSocket(location.origin.replace(/^http/, "ws"));
-    const audio = document.getElementById("player");
 
-    ws.onmessage = (event) => {
+    const bg = document.getElementById("bg");
+    const loud = document.getElementById("loud");
+
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+
+    // Background (leise, normal)
+    const bgSource = ctx.createMediaElementSource(bg);
+    const bgGain = ctx.createGain();
+    bgGain.gain.value = 0.2;
+    bgSource.connect(bgGain).connect(ctx.destination);
+
+    // Loud (stark distorted + laut)
+    const loudSource = ctx.createMediaElementSource(loud);
+    const loudGain = ctx.createGain();
+    loudGain.gain.value = 4.0;
+
+    const distortion = ctx.createWaveShaper();
+    distortion.curve = makeDistortionCurve(800);
+    distortion.oversample = "4x";
+
+    function makeDistortionCurve(amount) {
+      const k = amount;
+      const n = 44100;
+      const curve = new Float32Array(n);
+      for (let i = 0; i < n; i++) {
+        const x = (i * 2) / n - 1;
+        curve[i] = (1 + k) * x / (1 + k * Math.abs(x));
+      }
+      return curve;
+    }
+
+    loudSource.connect(loudGain).connect(distortion).connect(ctx.destination);
+
+    function startBackground() {
+      bg.src = "${AUDIO_URL}";
+      if (ctx.state === "suspended") ctx.resume();
+      bg.play().catch(() => {});
+    }
+
+    function emitLoud() {
+      ws.send("emit");
+    }
+
+    ws.onmessage = async (event) => {
       const data = JSON.parse(event.data);
-      if (data.type === "play") {
-        audio.src = data.url;
-        audio.play().catch(() => {});
+
+      if (data.type === "loud") {
+        loud.src = data.url;
+
+        if (ctx.state === "suspended") {
+          await ctx.resume();
+        }
+
+        loud.currentTime = 0;
+        loud.play().catch(() => {});
       }
     };
-
-    function sendPlay() {
-      ws.send("play");
-    }
   </script>
 </body>
 </html>`);
@@ -43,9 +91,9 @@ const wss = new WebSocket.Server({ server });
 
 wss.on("connection", (ws) => {
   ws.on("message", (msg) => {
-    if (msg.toString() === "play") {
+    if (msg.toString() === "emit") {
       const payload = JSON.stringify({
-        type: "play",
+        type: "loud",
         url: AUDIO_URL
       });
 
