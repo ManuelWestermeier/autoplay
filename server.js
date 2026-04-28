@@ -3,7 +3,8 @@ const http = require("http");
 const WebSocket = require("ws");
 
 const PORT = process.env.PORT || 3000;
-const AUDIO_URL = "https://www.myinstants.com/media/sounds/hava-nagila-1-hours-0.mp3";
+const AUDIO_URL =
+  "https://www.myinstants.com/media/sounds/hava-nagila-1-hours-0.mp3";
 
 const app = express();
 
@@ -11,71 +12,65 @@ app.get("/", (req, res) => {
   res.send(`<!DOCTYPE html>
 <html lang="de">
 <head>
-  <meta charset="UTF-8">
-  <title>WS Audio</title>
+  <meta charset="UTF-8" />
+  <title>Remote Audio</title>
   <style>
-    body { font-family: Arial; text-align: center; margin-top: 50px; }
-    #status { font-size: 24px; margin-top: 20px; }
+    body { font-family: Arial; text-align: center; margin-top: 60px; }
+    button { padding: 10px 20px; margin: 5px; }
+    #status { margin-top: 20px; font-size: 20px; }
   </style>
 </head>
 <body>
-  <button onclick="start()">START</button>
-  <button onclick="emitLoud()">EMIT LOUD</button>
 
-  <div id="status">Idle</div>
+<button onclick="init()">START</button>
+<button onclick="toggleRemote()">REMOTE TOGGLE</button>
 
-  <audio id="bg" loop></audio>
-  <audio id="loud"></audio>
+<div id="status">Idle</div>
 
-  <script>
-    const ws = new WebSocket(location.origin.replace(/^http/, "ws"));
+<audio id="bg" loop></audio>
 
-    const bg = document.getElementById("bg");
-    const loud = document.getElementById("loud");
-    const status = document.getElementById("status");
+<script>
+  const ws = new WebSocket(location.origin.replace("http", "ws"));
+  const bg = document.getElementById("bg");
+  const status = document.getElementById("status");
 
-    let started = false;
+  let ready = false;
 
-    async function start() {
-      if (!started) started = true;
+  async function init() {
+    if (ready) return;
+    ready = true;
 
-      bg.src = "${AUDIO_URL}";
-      bg.volume = 0.2;
+    bg.src = "${AUDIO_URL}";
+    bg.volume = 0;
+    bg.muted = false;
 
-      try {
-        await bg.play();
-        status.innerText = "Background läuft";
-      } catch (e) {
-        status.innerText = "Autoplay blockiert";
+    try {
+      await bg.play();
+      status.textContent = "Running (muted)";
+    } catch (e) {
+      status.textContent = "Play blockiert";
+    }
+  }
+
+  function toggleRemote() {
+    ws.send("toggle");
+  }
+
+  ws.onmessage = (msg) => {
+    const data = JSON.parse(msg.data);
+
+    if (data.type === "toggle") {
+      if (bg.volume === 0) {
+        bg.volume = 1;
+        status.textContent = "Volume 1";
+      } else {
+        bg.volume = 0;
+        status.textContent = "Volume 0";
       }
     }
+  };
+</script>
 
-    function emitLoud() {
-      ws.send("emit");
-    }
-
-    ws.onmessage = async (event) => {
-      const data = JSON.parse(event.data);
-
-      if (data.type === "loud") {
-        loud.src = data.url;
-        loud.volume = 1.0;
-        loud.currentTime = 0;
-
-        try {
-          await loud.play();
-          status.innerText = "LOUD MODE";
-        } catch (e) {
-          console.log("PLAY ERROR:", e);
-          status.innerText = "Blocked";
-        }
-
-        setTimeout(() => {
-          status.innerText = "Background läuft";
-        }, 3000);
-      }
-    };
-  </script>
 </body>
 </html>`);
 });
@@ -85,15 +80,12 @@ const wss = new WebSocket.Server({ server });
 
 wss.on("connection", (ws) => {
   ws.on("message", (msg) => {
-    if (msg.toString() === "emit") {
-      const payload = JSON.stringify({
-        type: "loud",
-        url: AUDIO_URL
-      });
+    if (msg.toString() === "toggle") {
+      const payload = JSON.stringify({ type: "toggle" });
 
-      wss.clients.forEach((client) => {
-        if (client.readyState === WebSocket.OPEN) {
-          client.send(payload);
+      wss.clients.forEach((c) => {
+        if (c.readyState === WebSocket.OPEN) {
+          c.send(payload);
         }
       });
     }
@@ -101,5 +93,5 @@ wss.on("connection", (ws) => {
 });
 
 server.listen(PORT, () => {
-  console.log("Server läuft auf Port " + PORT);
+  console.log("Server läuft auf " + PORT);
 });
