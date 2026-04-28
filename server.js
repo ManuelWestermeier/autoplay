@@ -13,10 +13,16 @@ app.get("/", (req, res) => {
 <head>
   <meta charset="UTF-8">
   <title>WS Audio</title>
+  <style>
+    body { font-family: Arial; text-align: center; margin-top: 50px; }
+    #status { font-size: 24px; margin-top: 20px; }
+  </style>
 </head>
 <body>
-  <button onclick="startBackground()">Start Background</button>
-  <button onclick="emitLoud()">Emit Loud</button>
+  <button onclick="start()">START (Audio aktivieren)</button>
+  <button onclick="emitLoud()">EMIT LOUD</button>
+
+  <div id="status">Idle</div>
 
   <audio id="bg" loop crossorigin="anonymous"></audio>
   <audio id="loud" crossorigin="anonymous"></audio>
@@ -26,41 +32,56 @@ app.get("/", (req, res) => {
 
     const bg = document.getElementById("bg");
     const loud = document.getElementById("loud");
+    const status = document.getElementById("status");
 
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    let ctx, started = false;
 
-    // Background (leise, normal)
-    const bgSource = ctx.createMediaElementSource(bg);
-    const bgGain = ctx.createGain();
-    bgGain.gain.value = 0.2;
-    bgSource.connect(bgGain).connect(ctx.destination);
+    function initAudio() {
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
 
-    // Loud (stark distorted + laut)
-    const loudSource = ctx.createMediaElementSource(loud);
-    const loudGain = ctx.createGain();
-    loudGain.gain.value = 4.0;
+      // Background
+      const bgSource = ctx.createMediaElementSource(bg);
+      const bgGain = ctx.createGain();
+      bgGain.gain.value = 0.15;
 
-    const distortion = ctx.createWaveShaper();
-    distortion.curve = makeDistortionCurve(800);
-    distortion.oversample = "4x";
+      bgSource.connect(bgGain).connect(ctx.destination);
+
+      // Loud chain (extrem laut + distortion)
+      const loudSource = ctx.createMediaElementSource(loud);
+
+      const gain = ctx.createGain();
+      gain.gain.value = 6.0; // extrem laut
+
+      const distortion = ctx.createWaveShaper();
+      distortion.curve = makeDistortionCurve(1200);
+      distortion.oversample = "4x";
+
+      loudSource.connect(gain).connect(distortion).connect(ctx.destination);
+    }
 
     function makeDistortionCurve(amount) {
-      const k = amount;
       const n = 44100;
       const curve = new Float32Array(n);
       for (let i = 0; i < n; i++) {
         const x = (i * 2) / n - 1;
-        curve[i] = (1 + k) * x / (1 + k * Math.abs(x));
+        curve[i] = Math.tanh(amount * x); // aggressive distortion
       }
       return curve;
     }
 
-    loudSource.connect(loudGain).connect(distortion).connect(ctx.destination);
+    async function start() {
+      if (!started) {
+        initAudio();
+        started = true;
+      }
 
-    function startBackground() {
+      await ctx.resume();
+
       bg.src = "${AUDIO_URL}";
-      if (ctx.state === "suspended") ctx.resume();
-      bg.play().catch(() => {});
+      bg.volume = 1.0;
+      bg.play().catch(()=>{});
+
+      status.innerText = "Background läuft";
     }
 
     function emitLoud() {
@@ -71,14 +92,20 @@ app.get("/", (req, res) => {
       const data = JSON.parse(event.data);
 
       if (data.type === "loud") {
-        loud.src = data.url;
-
-        if (ctx.state === "suspended") {
-          await ctx.resume();
+        if (!ctx || ctx.state === "suspended") {
+          return; // nicht gestartet → kein Ton möglich
         }
 
+        loud.src = data.url;
         loud.currentTime = 0;
-        loud.play().catch(() => {});
+
+        status.innerText = "LOUD MODE 🔥";
+
+        loud.play().catch(()=>{});
+
+        setTimeout(() => {
+          status.innerText = "Background läuft";
+        }, 3000);
       }
     };
   </script>
