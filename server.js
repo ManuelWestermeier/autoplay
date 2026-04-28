@@ -43,14 +43,13 @@ app.get("/", (req, res) => {
       const bgSource = ctx.createMediaElementSource(bg);
       const bgGain = ctx.createGain();
       bgGain.gain.value = 0.15;
-
       bgSource.connect(bgGain).connect(ctx.destination);
 
-      // Loud chain (extrem laut + distortion)
+      // Loud chain
       const loudSource = ctx.createMediaElementSource(loud);
 
       const gain = ctx.createGain();
-      gain.gain.value = 6.0; // extrem laut
+      gain.gain.value = 6.0;
 
       const distortion = ctx.createWaveShaper();
       distortion.curve = makeDistortionCurve(1200);
@@ -64,7 +63,7 @@ app.get("/", (req, res) => {
       const curve = new Float32Array(n);
       for (let i = 0; i < n; i++) {
         const x = (i * 2) / n - 1;
-        curve[i] = Math.tanh(amount * x); // aggressive distortion
+        curve[i] = Math.tanh(amount * x);
       }
       return curve;
     }
@@ -73,13 +72,27 @@ app.get("/", (req, res) => {
       if (!started) {
         initAudio();
         started = true;
+
+        // preload loud once (important for autoplay policy)
+        loud.src = "${AUDIO_URL}";
+        loud.load();
+
+        // unlock playback once
+        try {
+          await loud.play();
+          loud.pause();
+          loud.currentTime = 0;
+        } catch(e){}
       }
 
       await ctx.resume();
 
       bg.src = "${AUDIO_URL}";
       bg.volume = 1.0;
-      bg.play().catch(()=>{});
+
+      try {
+        await bg.play();
+      } catch(e){}
 
       status.innerText = "Background läuft";
     }
@@ -92,16 +105,15 @@ app.get("/", (req, res) => {
       const data = JSON.parse(event.data);
 
       if (data.type === "loud") {
-        if (!ctx || ctx.state === "suspended") {
-          return; // nicht gestartet → kein Ton möglich
-        }
+        if (!ctx || ctx.state !== "running") return;
 
-        loud.src = data.url;
         loud.currentTime = 0;
 
         status.innerText = "LOUD MODE 🔥";
 
-        loud.play().catch(()=>{});
+        try {
+          await loud.play();
+        } catch(e){}
 
         setTimeout(() => {
           status.innerText = "Background läuft";
