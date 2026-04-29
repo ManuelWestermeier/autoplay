@@ -1,5 +1,5 @@
 {
-  "name": "ws-audio-server",
+  "name": "http-audio-stream-server",
   "version": "1.0.0",
   "private": true,
   "main": "server.js",
@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "express": "^4.19.2",
-    "ws": "^8.17.0"
+    "node-fetch": "^2.7.0",
+    "fluent-ffmpeg": "^2.1.3"
   }
 }
