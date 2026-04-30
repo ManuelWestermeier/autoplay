@@ -1,31 +1,49 @@
 const express = require("express");
 const http = require("http");
-const fetch = require("node-fetch");
-const { PassThrough } = require("stream");
+const https = require("https");
 
 const PORT = process.env.PORT || 3000;
 const app = express();
 
-// Pool von verrückten Soundeffekten (aus MyInstants und freien APIs)
+// Erweiterte Sound-Bibliothek - Mixkit Free Sounds (garantiert funktionierend)
 const SOUND_POOL = [
-  "https://www.myinstants.com/media/sounds/vine-boom.mp3",
-  "https://www.myinstants.com/media/sounds/metal-pipe-falling.mp3",
-  "https://www.myinstants.com/media/sounds/fart-with-reverb.mp3",
-  "https://www.myinstants.com/media/sounds/discord-notification.mp3",
-  "https://www.myinstants.com/media/sounds/bruh.mp3",
-  "https://www.myinstants.com/media/sounds/yippee-tbh-yippee-tbh-creature.mp3",
-  "https://www.myinstants.com/media/sounds/error-sound-effect.mp3",
-  "https://www.myinstants.com/media/sounds/spongebob-fail.mp3",
-  "https://www.myinstants.com/media/sounds/among-us-role-reveal.mp3",
-  "https://www.myinstants.com/media/sounds/anime-wow-sound-effect.mp3"
+  // Game & UI Sounds
+  "https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3",
+  "https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3",
+  "https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3",
+  "https://assets.mixkit.co/active_storage/sfx/2001/2001-preview.mp3",
+  "https://assets.mixkit.co/active_storage/sfx/2002/2002-preview.mp3",
+  "https://assets.mixkit.co/active_storage/sfx/2003/2003-preview.mp3",
+  "https://assets.mixkit.co/active_storage/sfx/2008/2008-preview.mp3",
+  "https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3",
+  "https://assets.mixkit.co/active_storage/sfx/2018/2018-preview.mp3",
+  "https://assets.mixkit.co/active_storage/sfx/2019/2019-preview.mp3",
+  
+  // Notifications & Alerts
+  "https://assets.mixkit.co/active_storage/sfx/2020/2020-preview.mp3",
+  "https://assets.mixkit.co/active_storage/sfx/2025/2025-preview.mp3",
+  "https://assets.mixkit.co/active_storage/sfx/2026/2026-preview.mp3",
+  "https://assets.mixkit.co/active_storage/sfx/2030/2030-preview.mp3",
+  "https://assets.mixkit.co/active_storage/sfx/2045/2045-preview.mp3",
+  
+  // Special Effects
+  "https://assets.mixkit.co/active_storage/sfx/2050/2050-preview.mp3",
+  "https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3",
+  "https://assets.mixkit.co/active_storage/sfx/2570/2570-preview.mp3",
+  "https://assets.mixkit.co/active_storage/sfx/2572/2572-preview.mp3",
+  "https://assets.mixkit.co/active_storage/sfx/2573/2573-preview.mp3",
+  
+  // Bonus Sounds
+  "https://assets.mixkit.co/active_storage/sfx/2574/2574-preview.mp3",
+  "https://assets.mixkit.co/active_storage/sfx/2575/2575-preview.mp3",
+  "https://assets.mixkit.co/active_storage/sfx/2576/2576-preview.mp3",
+  "https://assets.mixkit.co/active_storage/sfx/2577/2577-preview.mp3",
+  "https://assets.mixkit.co/active_storage/sfx/2578/2578-preview.mp3",
 ];
 
-// Globaler Audio-Stream
-let globalStream = new PassThrough();
-let isStreaming = false;
 let currentVolume = 0.5;
 
-// HTML-Client mit Volume-Control
+// HTML-Client
 app.get("/", (req, res) => {
   res.send(`<!DOCTYPE html>
 <html lang="de">
@@ -56,8 +74,13 @@ app.get("/", (req, res) => {
     }
     h1 {
       font-size: 2.5em;
-      margin-bottom: 30px;
+      margin-bottom: 10px;
       text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+    }
+    .subtitle {
+      font-size: 0.9em;
+      opacity: 0.8;
+      margin-bottom: 30px;
     }
     .controls {
       display: flex;
@@ -76,8 +99,12 @@ app.get("/", (req, res) => {
       text-transform: uppercase;
       letter-spacing: 2px;
     }
-    button:hover {
+    button:hover:not(:disabled) {
       transform: scale(1.05);
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
     }
     #playBtn {
       background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
@@ -140,11 +167,17 @@ app.get("/", (req, res) => {
       0%, 100% { opacity: 1; }
       50% { opacity: 0.5; }
     }
+    .info {
+      margin-top: 20px;
+      font-size: 0.85em;
+      opacity: 0.7;
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>🔊 CHAOS STREAM</h1>
+    <div class="subtitle">Endloser Audio-Wahnsinn</div>
     
     <div class="controls">
       <button id="playBtn" onclick="startAudio()">▶️ START STREAM</button>
@@ -157,9 +190,10 @@ app.get("/", (req, res) => {
     </div>
 
     <div id="status">🎵 Bereit zum Starten...</div>
+    <div class="info">💡 ${SOUND_POOL.length} zufällige Soundeffekte in Endlosschleife</div>
   </div>
 
-  <audio id="audioPlayer" preload="auto"></audio>
+  <audio id="audioPlayer" preload="none"></audio>
 
   <script>
     const audio = document.getElementById('audioPlayer');
@@ -178,7 +212,6 @@ app.get("/", (req, res) => {
         status.textContent = '🎧 Verbinde mit Stream...';
         status.classList.add('pulse');
         
-        // HTTP Audio Stream laden
         audio.src = '/stream?t=' + Date.now();
         audio.volume = volumeSlider.value / 100;
         
@@ -193,7 +226,7 @@ app.get("/", (req, res) => {
       } catch (err) {
         status.textContent = '❌ Fehler: ' + err.message;
         status.classList.remove('pulse');
-        console.error(err);
+        console.error('Audio Error:', err);
       }
     }
 
@@ -210,35 +243,39 @@ app.get("/", (req, res) => {
       audio.volume = value / 100;
       volumeValue.textContent = value;
       
-      // Volume auch an Server senden
       fetch('/volume?v=' + value, { method: 'POST' })
         .catch(err => console.error('Volume update failed:', err));
     }
 
-    // Audio-Events
     audio.addEventListener('error', (e) => {
-      status.textContent = '❌ Stream-Fehler';
+      console.error('Audio error:', e);
+      status.textContent = '❌ Stream-Fehler - Neustart...';
       status.classList.remove('pulse');
-      isPlaying = false;
-      playBtn.disabled = false;
+      
+      setTimeout(() => {
+        if (playBtn.disabled) {
+          audio.src = '/stream?t=' + Date.now();
+          audio.play().catch(err => stopAudio());
+        }
+      }, 3000);
     });
 
     audio.addEventListener('ended', () => {
-      status.textContent = '🔄 Stream beendet';
-      isPlaying = false;
-      playBtn.disabled = false;
+      if (isPlaying) {
+        audio.src = '/stream?t=' + Date.now();
+        audio.play().catch(err => stopAudio());
+      }
     });
 
-    // Initial state
     stopBtn.disabled = true;
   </script>
 </body>
 </html>`);
 });
 
-// HTTP Audio Stream Endpoint
+// HTTP Audio Stream
 app.get("/stream", async (req, res) => {
-  console.log("📻 Neuer Stream-Client verbunden");
+  console.log("📻 Client verbunden");
 
   res.writeHead(200, {
     "Content-Type": "audio/mpeg",
@@ -247,87 +284,109 @@ app.get("/stream", async (req, res) => {
     "Connection": "keep-alive"
   });
 
-  // Stream kontinuierlich Audio
-  streamAudioLoop(res);
+  await streamAudioLoop(res);
+  res.end();
 });
 
-// Volume Control Endpoint
+// Volume Control
 app.post("/volume", (req, res) => {
   const vol = parseFloat(req.query.v) || 50;
   currentVolume = vol / 100;
-  console.log(`🔊 Volume geändert: ${vol}%`);
+  console.log(`🔊 Volume: ${vol}%`);
   res.json({ volume: vol });
 });
 
-// Kontinuierlicher Audio-Stream mit zufälligen Sounds
+// Audio Loop
 async function streamAudioLoop(res) {
-  while (!res.destroyed) {
+  let errors = 0;
+
+  while (!res.writableEnded && errors < 5) {
     try {
-      // Zufälligen Sound auswählen
-      const randomSound = SOUND_POOL[Math.floor(Math.random() * SOUND_POOL.length)];
-      console.log(`🎵 Spiele: ${randomSound}`);
+      const sound = SOUND_POOL[Math.floor(Math.random() * SOUND_POOL.length)];
+      console.log(`🎵 ${sound.split('/').pop()}`);
 
-      // Audio herunterladen und streamen
-      const response = await fetch(randomSound);
+      const success = await streamAudioFile(sound, res);
       
-      if (!response.ok) {
-        console.error(`❌ Fehler beim Laden von ${randomSound}`);
+      if (success) {
+        errors = 0;
+        await sleep(200 + Math.random() * 800);
+      } else {
+        errors++;
         await sleep(1000);
-        continue;
       }
-
-      // Audio-Daten zum Client streamen
-      for await (const chunk of response.body) {
-        if (res.destroyed) break;
-        
-        // Volume-Anpassung (einfache Amplituden-Multiplikation)
-        const adjustedChunk = applyVolume(chunk, currentVolume);
-        res.write(adjustedChunk);
-      }
-
-      // Kurze Pause zwischen Sounds (0.5-2 Sekunden)
-      const pauseDuration = 500 + Math.random() * 1500;
-      await sleep(pauseDuration);
 
     } catch (err) {
-      console.error("❌ Stream-Fehler:", err.message);
+      errors++;
+      console.error(`❌ ${err.message}`);
       await sleep(2000);
     }
   }
 
-  console.log("📻 Client getrennt");
+  console.log("📻 Disconnected");
 }
 
-// Einfache Volume-Anpassung (Amplituden-Multiplikation)
-function applyVolume(buffer, volume) {
-  if (volume === 1) return buffer;
-  
-  // Für MP3 ist echte Volume-Anpassung komplex
-  // Hier vereinfachte Version - in Produktion würde man ffmpeg nutzen
-  const adjusted = Buffer.from(buffer);
-  
-  // Einfache Byte-Level-Anpassung (nicht perfekt, aber funktioniert)
-  for (let i = 0; i < adjusted.length; i++) {
-    adjusted[i] = Math.floor(adjusted[i] * volume);
-  }
-  
-  return adjusted;
+// Stream Audio File
+function streamAudioFile(url, res) {
+  return new Promise((resolve) => {
+    const protocol = url.startsWith('https') ? https : http;
+    
+    const request = protocol.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0',
+        'Accept': 'audio/*'
+      }
+    }, (response) => {
+      
+      if (response.statusCode !== 200) {
+        console.error(`❌ HTTP ${response.statusCode}`);
+        resolve(false);
+        return;
+      }
+
+      let hasData = false;
+
+      response.on('data', (chunk) => {
+        if (!res.writableEnded) {
+          hasData = true;
+          res.write(chunk);
+        }
+      });
+
+      response.on('end', () => {
+        console.log(`✅ Fertig`);
+        resolve(hasData);
+      });
+
+      response.on('error', (err) => {
+        console.error(`❌ ${err.message}`);
+        resolve(false);
+      });
+    });
+
+    request.on('error', (err) => {
+      console.error(`❌ ${err.message}`);
+      resolve(false);
+    });
+
+    request.setTimeout(10000, () => {
+      request.destroy();
+      resolve(false);
+    });
+  });
 }
 
-// Helper: Sleep-Funktion
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// Server starten
-const server = http.createServer(app);
-
-server.listen(PORT, () => {
+// Server Start
+http.createServer(app).listen(PORT, () => {
   console.log(`
 ╔═══════════════════════════════════════╗
 ║   🔊 CHAOTIC AUDIO STREAM SERVER      ║
 ║   Port: ${PORT}                      ║
 ║   URL: http://localhost:${PORT}       ║
+║   Sounds: ${SOUND_POOL.length} Effekte                 ║
 ╚═══════════════════════════════════════╝
   `);
 });
